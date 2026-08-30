@@ -76,6 +76,8 @@ public class BufferPoolManager {
 
                         //Update the page table
                         this.pageTable.put(pageId, frameIndex);
+
+                        return newPage;
                     }
                 }catch(Exception e){
                     //TODO: check the right way to handle exceptions in java
