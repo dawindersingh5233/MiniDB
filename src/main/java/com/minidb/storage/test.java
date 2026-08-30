@@ -109,6 +109,10 @@ public class test {
             System.out.println("### Page 2 Execution completed ###");
             bm.unpinPage(2, false);
 
+            System.out.println("### Re-reading Page 2 ###");
+            page2 = bm.fetchPage(2);
+            System.out.println(page2);
+
             System.out.println("### Reading Page 4 ###");
             page4 = bm.fetchPage(4);
             if(page4 == null) {

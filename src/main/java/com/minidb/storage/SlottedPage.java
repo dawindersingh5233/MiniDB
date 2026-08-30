@@ -10,6 +10,11 @@ public class SlottedPage extends Page{
         this.slotDir = new SlotDirectory();
     }
 
+    public SlottedPage(ByteBuffer buffer){
+        super(buffer);
+        this.slotDir = new SlotDirectory();
+    }
+
     //Add the given record/row in byte buffer and return its slot id
     public short insertRecord(ByteBuffer data){
         int headerSize = 14;

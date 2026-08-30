@@ -28,7 +28,7 @@ public class BufferPoolManager {
         }
     }
 
-    public Page fetchPage(int pageId){
+    public SlottedPage fetchPage(int pageId){
         if(this.pageTable.containsKey(pageId)){
             int frameIndex = pageTable.get(pageId);
             Frame currFrame = this.frames[frameIndex];
@@ -42,7 +42,7 @@ public class BufferPoolManager {
             if(!freeFrameList.isEmpty()){
                 try{
                     DiskManager disk = new DiskManager(this.dbPath);
-                    Page newPage = disk.readPage(pageId);
+                    SlottedPage newPage = disk.readPage(pageId);
 
                     int frameIndex = this.freeFrameList.pollFirst();
                     frames[frameIndex] = new Frame(newPage, 1, false);
@@ -61,13 +61,13 @@ public class BufferPoolManager {
             }else{
                 try{
                     DiskManager disk = new DiskManager(this.dbPath);
-                    Page newPage = disk.readPage(pageId);
+                    SlottedPage newPage = disk.readPage(pageId);
 
                     int frameIndex = this.replacer.evict();
                     if(frameIndex != -1){
                         //Flush the page to disk
                         if(this.frames[frameIndex].isDirty()){
-                            Page evictedPage = this.frames[frameIndex].getPage();
+                            SlottedPage evictedPage = this.frames[frameIndex].getPage();
                             int evictedPageId = evictedPage.getPageId();
                             disk.writePage(evictedPageId, evictedPage);
                         }

@@ -41,10 +41,10 @@ public class DiskManager {
         }
     }
 
-    public Page readPage(int pageId) throws IOException {
+    public SlottedPage readPage(int pageId) throws IOException {
         int pageSize = Page.PAGE_SIZE;
         long offset = pageId * pageSize;
-        Page page = null;
+        SlottedPage page = null;
 
         try(
                 RandomAccessFile reader = new RandomAccessFile(this.path.toFile(), "r");
@@ -65,13 +65,13 @@ public class DiskManager {
 
             buffer.flip();
 
-            page = new Page(buffer);
+            page = new SlottedPage(buffer);
         }
 
         return page;
     }
 
-    public void writePage(int pageId, Page page) throws IOException{
+    public void writePage(int pageId, SlottedPage page) throws IOException{
         int pageSize = Page.PAGE_SIZE;
         long offset = pageId * pageSize;
 
@@ -94,11 +94,11 @@ public class DiskManager {
 
     public int allocatePage() {
         try {
-            Page page0 = readPage(0);
+            SlottedPage page0 = readPage(0);
             int firstFreePageId = page0.getPageId();
 
             if(firstFreePageId != -1){
-                Page freePage = readPage(firstFreePageId);
+                SlottedPage freePage = readPage(firstFreePageId);
                 int nextFreePageId = freePage.getPageId();
 
                 page0.setPageId(nextFreePageId);
@@ -119,10 +119,10 @@ public class DiskManager {
 
     public void deallocatePage(int pageId){
         try{
-            Page page0 = readPage(0);
+            SlottedPage page0 = readPage(0);
             int firstFreePageId = page0.getPageId();
 
-            Page currPage = readPage(pageId);
+            SlottedPage currPage = readPage(pageId);
             currPage.setPageId(firstFreePageId);
             currPage.setPageType(PageType.INVALID);
             currPage.setFreeSpacePointer((short) 4096);
