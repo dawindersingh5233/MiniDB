@@ -13,11 +13,13 @@ public class SlottedPage extends Page{
     public SlottedPage(ByteBuffer buffer){
         super(buffer);
         this.slotDir = new SlotDirectory();
+        this.loadSlotDirectory(buffer);
     }
 
     //Add the given record/row in byte buffer and return its slot id
+    //NOTE: We must provide the buffer that is in read mode i.e., after calling flip()
     public short insertRecord(ByteBuffer data){
-        int headerSize = 14;
+        int headerSize = 13;
         int slotDirSize = 4 * getSlotCount();
         int totalFreeSpace = getFreeSpacePointer() - (headerSize + slotDirSize);
         int requiredSpace = 4 + data.capacity();
@@ -62,12 +64,13 @@ public class SlottedPage extends Page{
 
     // Put the slot(offset, length) at the right position in Byte buffer
     public void updateSlotDirectory(short dataOffset, short dataLength, int pos){
-        short offset = 14;
+        short offset = 13;
 
         if(getSlotCount() == 0){
             putShort(offset, dataOffset);
             offset += 2;
             putShort(offset, dataLength);
+            offset += 2;
 
             incrementSlotCount();
         }else{
@@ -78,10 +81,11 @@ public class SlottedPage extends Page{
                 putShort(offset, dataOffset);
                 offset += 2;
                 putShort(offset, dataLength);
+                offset += 2;
 
                 incrementSlotCount();
             }else{
-                short headerSize = 14;
+                short headerSize = 13;
                 short slotSize = 4;
                 offset = (short) (headerSize + (slotSize * pos));
 
@@ -106,11 +110,17 @@ public class SlottedPage extends Page{
                     tempLength = currLength;
                 }
 
+                // Flush the last carried-over slot into its new position
+                putShort(offset, tempOffset);
+                offset = (short) (offset + 2);
+                putShort(offset, tempLength);
+
                 //Add the new slot at the right position
                 offset = (short) (headerSize + (slotSize * pos));
                 putShort(offset, dataOffset);
                 offset = (short) (offset + 2);
                 putShort(offset, dataLength);
+                offset = (short) (offset + 2);
 
                 incrementSlotCount();
             }
@@ -161,6 +171,7 @@ public class SlottedPage extends Page{
         this.slotDir.setAsTombstone(slotId);
     }
 
+    //NOTE: We must provide the buffer that is in read mode
     public boolean updateRecord(short slotId, ByteBuffer newData){
         Slot slot = this.slotDir.get(slotId);
         short oldRecordLength = slot.getLength();
@@ -200,7 +211,7 @@ public class SlottedPage extends Page{
         Slot slot = this.slotDir.get(slotId);
         slot.setOffset(newOffset);
 
-        short slotOffset = (short) (14 + (slotId * 4));
+        short slotOffset = (short) (13 + (slotId * 4));
         putShort(slotOffset, newOffset);
     }
 
@@ -209,7 +220,7 @@ public class SlottedPage extends Page{
         Slot slot = this.slotDir.get(slotId);
         slot.setLength(newLength);
 
-        short slotOffset = (short) (14 + (slotId * 4) + 2);
+        short slotOffset = (short) (13 + (slotId * 4) + 2);
         putShort(slotOffset, newLength);
     }
 
@@ -221,7 +232,6 @@ public class SlottedPage extends Page{
         newPage.setPageType(getPageType());
         newPage.setCheckSum(getCheckSum());
         newPage.setSlotCount((short) 0);
-        //TODO: will this be 4096 or 4095 because index starts at 0
         newPage.setFreeSpacePointer((short) 4096);
 
         // Fill slot directory and add valid records
@@ -235,6 +245,51 @@ public class SlottedPage extends Page{
                newPage.insertRecord(record);
             }
         }
+
+        setByteBuffer(newPage.getByteBuffer());
+    }
+
+    public void loadSlotDirectory(ByteBuffer data){
+        short slotCount = data.getShort(9);
+        int offset = 13;
+
+        System.out.println(slotCount);
+
+        for(int i = 0; i < slotCount; i++){
+            short slotOffset = data.getShort(offset);
+            offset = (short) (offset + 2);
+
+            short slotLength = data.getShort(offset);
+            offset = (short) (offset + 2);
+
+            this.slotDir.addSlot(slotOffset, slotLength);
+        }
+    }
+
+    public List<Slot> getSlots(){
+        return this.slotDir.getSlots();
+    }
+
+    public String toString(){
+        String pageHeader = "Page Header [\n";
+        pageHeader += " pageId: " + getPageId() + "\n";
+        pageHeader += " pageType: " + getPageType() + "\n";
+        pageHeader += " checkSum: " + getCheckSum() + "\n";
+        pageHeader += " slotCount: " + getSlotCount() + "\n";
+        pageHeader += " freeSpacePointer: " + getFreeSpacePointer() + "\n";
+        pageHeader += "]\n";
+
+        String slots = "Page Slots [\n";
+        int count = 1;
+        for(Slot slot: this.slotDir.getSlots()){
+            slots = slots + " Slot-"+count+" : ["+slot.getOffset()+", "+slot.getLength()+"]\n";
+            count += 1;
+        }
+        slots += "]\n";
+
+        String cells = "Data cells []\n";
+
+        return pageHeader + slots + cells;
     }
 }
 

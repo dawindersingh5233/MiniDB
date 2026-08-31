@@ -30,7 +30,7 @@ public class DiskManager {
     }
 
     public void createMetaPage() {
-        Page page = new Page();
+        SlottedPage page = new SlottedPage();
         page.setPageId(-1);
         page.setPageType(PageType.META);
 

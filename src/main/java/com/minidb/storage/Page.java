@@ -145,19 +145,5 @@ public class Page {
         this.buffer.putInt(offset, value);
     }
 
-    public String toString(){
-        String pageHeader = "Page Header [\n";
-        pageHeader += " pageId: " + this.pageId + "\n";
-        pageHeader += " pageType: " + this.pageType + "\n";
-        pageHeader += " checkSum: " + this.checkSum + "\n";
-        pageHeader += " slotCount: " + this.slotCount + "\n";
-        pageHeader += " freeSpacePointer: " + this.freeSpacePointer + "\n";
-        pageHeader += "]\n";
-
-        String slots = "Page Slots []\n";
-        String cells = "Data cells []\n";
-
-        return pageHeader + slots + cells;
-    }
 }
 
