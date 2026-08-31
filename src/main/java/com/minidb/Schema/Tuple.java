@@ -86,10 +86,46 @@ public class Tuple {
     }
 
     private static byte[] serialize(List<Value> values, Schema schema) {
-        // 1st pass: compute total size (fixed part + varlen part)
-        // 2nd pass: write fixed columns at their known offsets,
-        //           append varlen columns in order at the end
-        // (implementation straightforward given the layout above)
-        ...
+        int totalLength = schema.getFixedPartLength();
+
+        byte[][] varData = new byte[schema.getColumnCount()][];
+
+        for (int i = 0; i < schema.getColumnCount(); i++) {
+            if (schema.isVariableLengthColumn(i)) {
+                byte[] arr = values.get(i).asString().getBytes(StandardCharsets.UTF_8);
+                varData[i] = arr;
+
+                totalLength += 4;
+                totalLength += arr.length;
+            }
+        }
+
+        ByteBuffer buffer = ByteBuffer.allocate(totalLength);
+        int varOffset = schema.getFixedPartLength();
+
+        for (int i = 0; i < schema.getColumnCount(); i++) {
+            if (schema.isVariableLengthColumn(i)) {
+                byte[] arr = varData[i];
+
+                buffer.putInt(varOffset, arr.length);
+                varOffset += 4;
+
+                buffer.put(varOffset, arr);
+                varOffset += arr.length;
+            } else {
+                Column column = schema.getColumn(i);
+
+                switch (column.getType()) {
+                    case INTEGER:
+                        buffer.putInt(column.getFixedOffset(), values.get(i).asInt());
+                        break;
+                    case BOOLEAN:
+                        buffer.put(column.getFixedOffset(), (byte) (values.get(i).asBoolean() ? 1 : 0));
+                        break;
+                }
+            }
+        }
+
+        return buffer.array();
     }
 }
