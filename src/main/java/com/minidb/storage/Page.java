@@ -8,16 +8,20 @@ public class Page {
 
     //Page header fields
     private int pageId;
+    private int prevPageId;
+    private int nextPageId;
     private byte pageType;
     private int checkSum;
     private short slotCount;
     private short freeSpacePointer;
 
     public static final short PAGE_ID_OFFSET = 0;
-    public static final short PAGE_TYPE_OFFSET = 4;
-    public static final short CHECKSUM_OFFSET = 5;
-    public static final short SLOT_COUNT_OFFSET = 9;
-    public static final short FREE_SPACE_POINTER_OFFSET = 11;
+    public static final short PREV_PAGE_ID_OFFSET = 4;
+    public static final short NEXT_PAGE_ID_OFFSET = 8;
+    public static final short PAGE_TYPE_OFFSET = 12;
+    public static final short CHECKSUM_OFFSET = 13;
+    public static final short SLOT_COUNT_OFFSET = 17;
+    public static final short FREE_SPACE_POINTER_OFFSET = 19;
 
     protected ByteBuffer buffer;
     private ReentrantReadWriteLock rwl;
@@ -53,6 +57,14 @@ public class Page {
         return pageId;
     }
 
+    public int getPrevPageId() {
+        return prevPageId;
+    }
+
+    public int getNextPageId() {
+        return nextPageId;
+    }
+
     public byte getPageType() {
         return pageType;
     }
@@ -77,6 +89,16 @@ public class Page {
     public void setPageId(int pageId) {
         this.pageId = pageId;
         this.putInt(Page.PAGE_ID_OFFSET, pageId);
+    }
+
+    public void setPrevPageId(int pageId) {
+        this.prevPageId = pageId;
+        this.putInt(Page.PREV_PAGE_ID_OFFSET, pageId);
+    }
+
+    public void setNextPageId(int pageId) {
+        this.nextPageId = pageId;
+        this.putInt(Page.NEXT_PAGE_ID_OFFSET, pageId);
     }
 
     public void setPageType(byte pageType) {

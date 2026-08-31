@@ -5,6 +5,7 @@ import java.util.List;
 
 public class SlottedPage extends Page{
     private SlotDirectory slotDir;
+    private int pageHeaderSize = 21;
 
     public SlottedPage(){
         this.slotDir = new SlotDirectory();
@@ -19,7 +20,7 @@ public class SlottedPage extends Page{
     //Add the given record/row in byte buffer and return its slot id
     //NOTE: We must provide the buffer that is in read mode i.e., after calling flip()
     public short insertRecord(ByteBuffer data){
-        int headerSize = 13;
+        int headerSize = pageHeaderSize;
         int slotDirSize = 4 * getSlotCount();
         int totalFreeSpace = getFreeSpacePointer() - (headerSize + slotDirSize);
         int requiredSpace = 4 + data.capacity();
@@ -64,7 +65,7 @@ public class SlottedPage extends Page{
 
     // Put the slot(offset, length) at the right position in Byte buffer
     public void updateSlotDirectory(short dataOffset, short dataLength, int pos){
-        short offset = 13;
+        short offset = (short) pageHeaderSize;
 
         if(getSlotCount() == 0){
             putShort(offset, dataOffset);
@@ -85,7 +86,7 @@ public class SlottedPage extends Page{
 
                 incrementSlotCount();
             }else{
-                short headerSize = 13;
+                short headerSize = (short) pageHeaderSize;
                 short slotSize = 4;
                 offset = (short) (headerSize + (slotSize * pos));
 
@@ -211,7 +212,7 @@ public class SlottedPage extends Page{
         Slot slot = this.slotDir.get(slotId);
         slot.setOffset(newOffset);
 
-        short slotOffset = (short) (13 + (slotId * 4));
+        short slotOffset = (short) (pageHeaderSize + (slotId * 4));
         putShort(slotOffset, newOffset);
     }
 
@@ -220,7 +221,7 @@ public class SlottedPage extends Page{
         Slot slot = this.slotDir.get(slotId);
         slot.setLength(newLength);
 
-        short slotOffset = (short) (13 + (slotId * 4) + 2);
+        short slotOffset = (short) (pageHeaderSize + (slotId * 4) + 2);
         putShort(slotOffset, newLength);
     }
 
@@ -251,7 +252,7 @@ public class SlottedPage extends Page{
 
     public void loadSlotDirectory(ByteBuffer data){
         short slotCount = data.getShort(9);
-        int offset = 13;
+        int offset = pageHeaderSize;
 
         System.out.println(slotCount);
 
