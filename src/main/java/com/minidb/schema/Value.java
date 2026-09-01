@@ -1,4 +1,4 @@
-package com.minidb.Schema;
+package com.minidb.schema;
 
 public class Value {
     private final TypeId type;

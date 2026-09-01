@@ -1,4 +1,4 @@
-package com.minidb.Schema;
+package com.minidb.schema;
 
 public enum TypeId {
     INTEGER(4, true),

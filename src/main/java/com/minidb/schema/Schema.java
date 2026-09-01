@@ -1,4 +1,4 @@
-package com.minidb.Schema;
+package com.minidb.schema;
 
 import java.util.*;
 
