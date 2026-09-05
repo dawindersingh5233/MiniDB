@@ -5,7 +5,7 @@ import java.util.List;
 
 public class SlottedPage extends Page{
     private SlotDirectory slotDir;
-    private int pageHeaderSize = 21;
+    private int pageHeaderSize = 13;
 
     public SlottedPage(){
         this.slotDir = new SlotDirectory();
