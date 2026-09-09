@@ -4,17 +4,36 @@ import java.nio.ByteBuffer;
 import java.util.List;
 
 public class SlottedPage extends Page{
+    public static int pageHeaderSize = 17;
     private SlotDirectory slotDir;
-    private int pageHeaderSize = 13;
+    private int nextPageId;
+
+    private static short NEXT_PAGE_ID_OFFET = 13;
 
     public SlottedPage(){
         this.slotDir = new SlotDirectory();
+
+        setPageType(PageType.DATA);
+        setCheckSum(0);
+        setSlotCount((short) 0);
+        setFreeSpacePointer((short) 4096);
     }
 
     public SlottedPage(ByteBuffer buffer){
         super(buffer);
+        this.setNextPageId(getNextPageId());
+
         this.slotDir = new SlotDirectory();
         this.loadSlotDirectory(buffer);
+    }
+
+    public int getNextPageId(){
+        return getInt(NEXT_PAGE_ID_OFFET);
+    }
+
+    public void setNextPageId(int nextPageId){
+        this.nextPageId = nextPageId;
+        putInt(NEXT_PAGE_ID_OFFET, nextPageId);
     }
 
     //Add the given record/row in byte buffer and return its slot id

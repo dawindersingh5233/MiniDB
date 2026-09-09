@@ -23,6 +23,9 @@ public class LeafNode extends Page{
         setCheckSum(0);
         setSlotCount((short) 0);
         setFreeSpacePointer((short) 30);
+        setParentPageId(0);
+        setNextPageId(0);
+        setPageId(0);
 
         this.keys = new ArrayList<>();
         this.values = new ArrayList<>();
@@ -56,6 +59,10 @@ public class LeafNode extends Page{
 
     public short getKeyCount(){
         return getSlotCount();
+    }
+
+    public int getKeyAtPos(int pos){
+        return this.keys.get(pos);
     }
 
     //Mutators

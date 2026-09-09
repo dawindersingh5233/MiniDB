@@ -11,43 +11,75 @@ import java.nio.file.Paths;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class DiskManager {
-    private AtomicInteger counter;
-    private Path path;
+    private AtomicInteger dataCounter;
+    private AtomicInteger indexCounter;
 
-    public DiskManager(Path path){
-        this.counter = new AtomicInteger(0);
-        this.path = path;
+    public DiskManager(){
+        this.dataCounter = new AtomicInteger(0);
+        this.indexCounter = new AtomicInteger(0);
 
-        // Ensure parent directories exist
-        File fileObj = this.path.toFile();
-        if (fileObj.getParentFile() != null) {
-            fileObj.getParentFile().mkdirs();
+        //Ensures data file exists
+        File dataFile = getPath(PageType.DATA).toFile();
+        if (dataFile.getParentFile() != null) {
+            dataFile.getParentFile().mkdirs();
         }
 
-        if(!Files.exists(this.path)){
-            createMetaPage();
+        //Ensure index file exists
+        File indexFile = getPath(PageType.INDEX_LEAF).toFile();
+        if (indexFile.getParentFile() != null) {
+            indexFile.getParentFile().mkdirs();
+        }
+
+        //Ensure meta files exists
+        File metaFile = getPath(PageType.META).toFile();
+        if (metaFile.getParentFile() != null) {
+            metaFile.getParentFile().mkdirs();
+        }
+
+        if(!Files.exists(getPath(PageType.META))){
+            init();
         }
     }
 
-    public void createMetaPage() {
-        SlottedPage page = new SlottedPage();
-        page.setPageId(-1);
-        page.setPageType(PageType.META);
+    //Allocated Meta pages for re-allocation and FSM
+    public void init(){
+        //Helps to form reallocation for data pages
+        Page page1 = new Page();
+        page1.setPageId(-1);
+        page1.setPageType(PageType.META);
+
+        //Helps to form reallocation for data pages
+        Page page2 = new Page();
+        page2.setPageId(-1);
+        page2.setPageType(PageType.META);
+
+        //ensuring FSM page exists
+        FreeSpaceMap fsm = new FreeSpaceMap();
 
         try {
-            writePage(0, page);
+            writePage(0, page1);
+            writePage(1, page2);
+            writePage(2, fsm);
         }catch(Exception e){
             System.out.println("Exception at DiskManager.createMetaPage(): "+e.getMessage());
         }
     }
 
-    public SlottedPage readPage(int pageId) throws IOException {
+    //Used to keep track of the deallocated pages
+    //Forms a linked list of free pages
+    public void createMetaPage() {
+        //If meta page has pageId -1, means no dellocated pages available
+    }
+
+    public Page readPage(int pageId, byte type) throws IOException {
+        Path path = getPath(type);
+        Page page = null;
+
         int pageSize = Page.PAGE_SIZE;
         long offset = pageId * pageSize;
-        SlottedPage page = null;
 
         try(
-                RandomAccessFile reader = new RandomAccessFile(this.path.toFile(), "r");
+                RandomAccessFile reader = new RandomAccessFile(path.toFile(), "r");
                 FileChannel channel = reader.getChannel();
         ){
             ByteBuffer buffer = ByteBuffer.allocate(pageSize);
@@ -65,18 +97,20 @@ public class DiskManager {
 
             buffer.flip();
 
-            page = new SlottedPage(buffer);
+            page = new Page(buffer);
         }
 
         return page;
     }
 
-    public void writePage(int pageId, SlottedPage page) throws IOException{
+    public void writePage(int pageId, Page page) throws IOException{
+        Path path = getPath(page.getPageType());
+
         int pageSize = Page.PAGE_SIZE;
         long offset = pageId * pageSize;
 
         try(
-                RandomAccessFile writter = new RandomAccessFile(this.path.toFile(), "rw");
+                RandomAccessFile writter = new RandomAccessFile(path.toFile(), "rw");
                 FileChannel channel = writter.getChannel();
         ){
             ByteBuffer buffer = page.getByteBuffer();
@@ -92,13 +126,15 @@ public class DiskManager {
         }
     }
 
-    public int allocatePage() {
+    public int allocatePage(byte type) {
         try {
-            SlottedPage page0 = readPage(0);
+            int id = (type == PageType.DATA) ? 0 : 1;
+
+            Page page0 = readPage(id, PageType.META);
             int firstFreePageId = page0.getPageId();
 
             if(firstFreePageId != -1){
-                SlottedPage freePage = readPage(firstFreePageId);
+                Page freePage = readPage(firstFreePageId, type);
                 int nextFreePageId = freePage.getPageId();
 
                 page0.setPageId(nextFreePageId);
@@ -106,7 +142,7 @@ public class DiskManager {
                 //Here we are putting pageId=0 because write method will
                 //calculate the offset based on the id that we pass, and
                 //since we want to store this page at index 0
-                writePage(0, page0);
+                writePage(id, page0);
 
                 return firstFreePageId;
             }
@@ -114,17 +150,22 @@ public class DiskManager {
             throw new RuntimeException(e);
         }
 
-        return this.counter.incrementAndGet();
+        if(type == PageType.DATA){
+            return this.dataCounter.incrementAndGet();
+        }
+
+        return this.indexCounter.incrementAndGet();
     }
 
-    public void deallocatePage(int pageId){
+    public void deallocatePage(int pageId, byte type){
         try{
-            SlottedPage page0 = readPage(0);
+            int id = (type == PageType.DATA) ? 0 : 1;
+
+            Page page0 = readPage(id, PageType.META);
             int firstFreePageId = page0.getPageId();
 
-            SlottedPage currPage = readPage(pageId);
+            Page currPage = readPage(pageId, type);
             currPage.setPageId(firstFreePageId);
-            currPage.setPageType(PageType.INVALID);
             currPage.setFreeSpacePointer((short) 4096);
 
             page0.setPageId(pageId);
@@ -132,9 +173,31 @@ public class DiskManager {
             //TODO: Here we are re-writing the entire page
             //TODO: update this method later to improve performance
             writePage(pageId, currPage);
-            writePage(0, page0);
+            writePage(id, page0);
         }catch(Exception e){
             System.out.println("Exception at DiskManager.deallocatePage(): "+e.getLocalizedMessage());
+        }
+    }
+
+    public Path getPath(byte type){
+        String dest = "";
+
+        switch(type){
+            case PageType.META:
+                dest = "/home/dawindersingh5233/Projects/MiniDB/database/meta/meta.db";
+                return Path.of(dest);
+
+            case PageType.INDEX_INTERNAL:
+            case PageType.INDEX_LEAF:
+                dest = "/home/dawindersingh5233/Projects/MiniDB/database/index/index.db";
+                return Path.of(dest);
+
+            case PageType.DATA:
+                dest = "/home/dawindersingh5233/Projects/MiniDB/database/data/data.db";
+                return Path.of(dest);
+
+            default:
+                return null;
         }
     }
 }

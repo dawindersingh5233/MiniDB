@@ -3,18 +3,18 @@ package com.minidb.storage;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class Frame {
-    private SlottedPage page;
+    private Page page;
     private int pinCount;
     private boolean isDirty;
 
-    public Frame(SlottedPage page, int pinCount, boolean isDirty){
+    public Frame(Page page, int pinCount, boolean isDirty){
         this.page = page;
         this.pinCount = pinCount;
         this.isDirty = isDirty;
     }
 
     // Accessors and mutators
-    public SlottedPage getPage() {
+    public Page getPage() {
         return page;
     }
 
@@ -26,7 +26,7 @@ public class Frame {
         return isDirty;
     }
 
-    public void setPage(SlottedPage page) {
+    public void setPage(Page page) {
         this.page = page;
     }
 

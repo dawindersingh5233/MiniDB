@@ -8,27 +8,26 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class BufferPoolManager {
+    private static BufferPoolManager instance;
     public static final int POOL_SIZE = 64;
 
     private Frame[] frames;
     private Map<Integer, Integer> pageTable;
     private Deque<Integer> freeFrameList;
     private LRUReplacer replacer;
-    private Path dbPath;
 
-    public BufferPoolManager(Path dbPath){
+    public BufferPoolManager(){
         this.frames = new Frame[POOL_SIZE];
         this.pageTable = new ConcurrentHashMap<>();
         this.freeFrameList = new ArrayDeque<>();
         this.replacer = new LRUReplacer();
-        this.dbPath = dbPath;
 
         for(int i = 0; i < POOL_SIZE; i++){
             this.freeFrameList.offerLast(i);
         }
     }
 
-    public SlottedPage fetchPage(int pageId){
+    public Page fetchPage(int pageId, byte pageType){
         if(this.pageTable.containsKey(pageId)){
             int frameIndex = pageTable.get(pageId);
             Frame currFrame = this.frames[frameIndex];
@@ -41,8 +40,8 @@ public class BufferPoolManager {
         }else{
             if(!freeFrameList.isEmpty()){
                 try{
-                    DiskManager disk = new DiskManager(this.dbPath);
-                    SlottedPage newPage = disk.readPage(pageId);
+                    DiskManager disk = new DiskManager();
+                    Page newPage = disk.readPage(pageId, pageType);
 
                     int frameIndex = this.freeFrameList.pollFirst();
                     frames[frameIndex] = new Frame(newPage, 1, false);
@@ -60,14 +59,14 @@ public class BufferPoolManager {
                 }
             }else{
                 try{
-                    DiskManager disk = new DiskManager(this.dbPath);
-                    SlottedPage newPage = disk.readPage(pageId);
+                    DiskManager disk = new DiskManager();
+                    Page newPage = disk.readPage(pageId, pageType);
 
                     int frameIndex = this.replacer.evict();
                     if(frameIndex != -1){
                         //Flush the page to disk
                         if(this.frames[frameIndex].isDirty()){
-                            SlottedPage evictedPage = this.frames[frameIndex].getPage();
+                            Page evictedPage = this.frames[frameIndex].getPage();
                             int evictedPageId = evictedPage.getPageId();
                             disk.writePage(evictedPageId, evictedPage);
                         }
@@ -92,6 +91,37 @@ public class BufferPoolManager {
         return null;
     }
 
+    public int allocateNewPage(byte type){
+        DiskManager disk = new DiskManager();
+        int pageId = disk.allocatePage(type);
+
+        try{
+            switch(type){
+                case PageType.DATA:
+                    SlottedPage page = new SlottedPage();
+                    page.setPageId(pageId);
+                    disk.writePage(pageId, page);
+                    break;
+
+                case PageType.INDEX_INTERNAL:
+                    InternalNode internalNode = new InternalNode();
+                    internalNode.setPageId(pageId);
+                    disk.writePage(pageId, internalNode);
+                    break;
+
+                case PageType.INDEX_LEAF:
+                    LeafNode leaf = new LeafNode();
+                    leaf.setPageId(pageId);
+                    disk.writePage(pageId, leaf);
+                    break;
+            }
+        }catch(Exception e){
+            System.out.println("Exception in BufferPoolManager.allocateNewPage(): "+ e.getMessage());
+        }
+
+        return pageId;
+    }
+
     public void unpinPage(int pageId, boolean isDirty){
         if(this.pageTable.containsKey(pageId)){
             int frameIndex = this.pageTable.get(pageId);
@@ -103,5 +133,13 @@ public class BufferPoolManager {
                 this.replacer.unpin(frameIndex);
             }
         }
+    }
+
+    public static synchronized BufferPoolManager getInstance(){
+        if(instance == null){
+            instance = new BufferPoolManager();
+        }
+
+        return instance;
     }
 }

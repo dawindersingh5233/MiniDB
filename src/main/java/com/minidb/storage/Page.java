@@ -25,6 +25,11 @@ public class Page {
     public Page(){
         this.buffer = ByteBuffer.allocate(PAGE_SIZE);
         this.rwl = new ReentrantReadWriteLock();
+
+        setCheckSum(0);
+        setSlotCount((short) 0);
+        setFreeSpacePointer((short) 4096);
+
     }
 
     public Page(ByteBuffer buffer){

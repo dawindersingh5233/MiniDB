@@ -44,8 +44,31 @@ public class InternalNode extends Page{
         return getSlotCount();
     }
 
+    public List<Integer> getChildren(){
+        return this.values;
+    }
+
+    public int getKeyAtPos(int pos){
+        return this.keys.get(pos);
+    }
+
+    public int indexOf(int leafPageId){
+        return this.values.indexOf(leafPageId);
+    }
+
+    public int getChildAtPos(int index){
+        return this.values.get(index);
+    }
+
+    public int getChildCount(){
+        return this.values.size();
+    }
 
     //Mutators
+    public void setKeyAtPos(int index, int key){
+        this.keys.set(index, key);
+    }
+
     public void incrementKeyCount(){
         incrementSlotCount();
     }
@@ -146,6 +169,47 @@ public class InternalNode extends Page{
         incrementKeyCount();
     }
 
+    //Add the entry at first position with left page id
+    public void prependNewEntry(int pageId, int key){
+        if(containsKey(key)){
+            return;
+        }
+
+        this.keys.add(0, key);
+        this.values.add(0, pageId);
+
+        int keyCount = getKeyCount();
+        short entrySize = 8;
+        short offset = (short) (NODE_ENTRY_OFFSET + 4 + (entrySize * (keyCount + 1)));
+
+        short fromOffset = (short) (offset - entrySize - 4);
+        short toOffset = (short) (offset - 4);
+        for(int i = 0; i < keyCount; i++){
+            int currPageId = getInt(fromOffset);
+            fromOffset -= 4;
+
+            int currKey = getInt(fromOffset);
+            fromOffset -= 4;
+
+            putInt(toOffset, currPageId);
+            toOffset -= 4;
+            putInt(toOffset, currKey);
+            toOffset -= 4;
+        }
+
+        int initPageId = getInt(fromOffset);
+        putInt(toOffset, initPageId);
+
+        toOffset -= 4;
+        putInt(toOffset, key);
+        toOffset -= 4;
+        putInt(toOffset, pageId);
+
+        setFreeSpacePointer(offset);
+
+        incrementKeyCount();
+    }
+
     public boolean containsKey(int key){
         return Collections.binarySearch(this.keys, key) >= 0;
     }
@@ -192,5 +256,56 @@ public class InternalNode extends Page{
 
         setFreeSpacePointer(offset);
         decrementKeyCount();
+    }
+
+    public void deleteNodeEntryLeft(int key){
+        if(!containsKey(key)){
+            return;
+        }
+
+        this.keys.remove(0);
+        this.values.remove(0);
+
+        int keyCount = getKeyCount();
+        short entrySize = 8;
+        short toOffset = (short) (NODE_ENTRY_OFFSET);
+        short fromOffset = (short) (NODE_ENTRY_OFFSET + entrySize);
+
+        for(int i = 1; i < keyCount; i++){
+            int currPageId = getInt(fromOffset);
+            fromOffset += 4;
+
+            int currKey = getInt(fromOffset);
+            fromOffset += 4;
+
+            putInt(toOffset, currPageId);
+            toOffset += 4;
+            putInt(toOffset, currKey);
+            toOffset += 4;
+        }
+
+        setFreeSpacePointer(toOffset);
+        decrementKeyCount();
+    }
+
+    public void appendNewKey(int key){
+        this.keys.add(key);
+
+        short offset = getFreeSpacePointer();
+        putInt(offset, key);
+        offset += 4;
+
+        setFreeSpacePointer(offset);
+        incrementKeyCount();
+    }
+
+    public void appendChild(int pageId){
+        this.values.add(pageId);
+
+        short offset = getFreeSpacePointer();
+        putInt(offset, pageId);
+        offset += 4;
+
+        setFreeSpacePointer(offset);
     }
 }
