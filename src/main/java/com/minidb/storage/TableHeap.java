@@ -1,12 +1,9 @@
 package com.minidb.storage;
 
-import com.minidb.schema.Tuple;
-
 import java.nio.ByteBuffer;
-import java.nio.file.Path;
 
 public class TableHeap {
-    private int fsmPageId = 1;
+    private int fsmPageId = 2;
     private BufferPoolManager bufferPool;
     private FreeSpaceMap fsm;
 
@@ -44,6 +41,10 @@ public class TableHeap {
             int newPageId = this.bufferPool.allocateNewPage(PageType.DATA);
             Page page = this.bufferPool.fetchPage(newPageId, PageType.DATA);
             SlottedPage slottedPage = new SlottedPage(page.getByteBuffer());
+
+            //Add entry of newly allotted page in FSM
+            int space = 4096 - SlottedPage.pageHeaderSize;
+            this.fsm.addNewPageEntry(newPageId, toPercentage(space));
 
             //TODO: handle the case where page is null
             if(page != null){

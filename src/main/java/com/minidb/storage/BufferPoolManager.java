@@ -1,5 +1,6 @@
 package com.minidb.storage;
 
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
@@ -130,6 +131,27 @@ public class BufferPoolManager {
             frame.setDirty(isDirty);
 
             if(frame.getPinCount() == 0){
+                this.replacer.unpin(frameIndex);
+            }
+        }
+    }
+
+    public void deallocatedPage(int pageId, byte type) {
+        if(this.pageTable.containsKey(pageId)){
+            int frameIndex = this.pageTable.get(pageId);
+            Frame frame = frames[frameIndex];
+            frame.decrementPinCount();
+
+            if(frame.isDirty()){
+                try{
+                    DiskManager disk = new DiskManager();
+                    disk.writePage(pageId, frame.getPage());
+                }catch(Exception e){
+                    e.printStackTrace();
+                }
+            }
+
+            if(frame.getPinCount() == 0) {
                 this.replacer.unpin(frameIndex);
             }
         }
