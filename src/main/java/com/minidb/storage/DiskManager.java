@@ -11,13 +11,10 @@ import java.nio.file.Paths;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class DiskManager {
-    private AtomicInteger dataCounter;
-    private AtomicInteger indexCounter;
+    private Counter counter;
+    private static DiskManager instance;
 
-    public DiskManager(){
-        this.dataCounter = new AtomicInteger(0);
-        this.indexCounter = new AtomicInteger(0);
-
+    private DiskManager(){
         //Ensures data file exists
         File dataFile = getPath(PageType.DATA).toFile();
         if (dataFile.getParentFile() != null) {
@@ -37,12 +34,20 @@ public class DiskManager {
         }
 
         if(!Files.exists(getPath(PageType.META))){
-            init();
+            initMetaData();
+        }
+
+        //initializing counter values
+        try{
+            Page counterPage = readPage(3, PageType.META);
+            this.counter = new Counter(counterPage.getByteBuffer());
+        }catch(Exception e){
+            e.printStackTrace();
         }
     }
 
     //Allocated Meta pages for re-allocation and FSM
-    public void init(){
+    public void initMetaData(){
         //Helps to form reallocation for data pages
         Page page1 = new Page();
         page1.setPageId(-1);
@@ -56,10 +61,14 @@ public class DiskManager {
         //ensuring FSM page exists
         FreeSpaceMap fsm = new FreeSpaceMap();
 
+        //ensuring counter are set with appropriate values
+        Counter counter = new Counter();
+
         try {
             writePage(0, page1);
             writePage(1, page2);
             writePage(2, fsm);
+            writePage(3, counter);
         }catch(Exception e){
             System.out.println("Exception at DiskManager.createMetaPage(): "+e.getMessage());
         }
@@ -151,10 +160,10 @@ public class DiskManager {
         }
 
         if(type == PageType.DATA){
-            return this.dataCounter.incrementAndGet();
+            return this.counter.getAndIncrementData();
         }
 
-        return this.indexCounter.incrementAndGet();
+        return this.counter.getAndIncrementIndex();
     }
 
     public void deallocatePage(int pageId, byte type){
@@ -199,5 +208,13 @@ public class DiskManager {
             default:
                 return null;
         }
+    }
+
+    public static synchronized DiskManager getInstance(){
+        if(instance == null){
+            instance = new DiskManager();
+        }
+
+        return instance;
     }
 }

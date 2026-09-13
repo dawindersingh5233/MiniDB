@@ -10,9 +10,9 @@ public class LeafNode extends Page{
     private int nextPageId;
     private int prevPageId;
 
-    public static final short PARENT_PAGE_ID_OFFSET = 1;
-    public static final short NEXT_PAGE_ID_OFFSET = 1;
-    public static final short PREV_PAGE_ID_OFFSET = 1;
+    public static final short PARENT_PAGE_ID_OFFSET = 13;
+    public static final short NEXT_PAGE_ID_OFFSET = 17;
+    public static final short PREV_PAGE_ID_OFFSET = 21;
     public static final short NODE_ENTRY_OFFSET = 30;
 
     private List<Integer> keys;
@@ -25,7 +25,7 @@ public class LeafNode extends Page{
         setFreeSpacePointer((short) 30);
         setParentPageId(0);
         setNextPageId(0);
-        setPageId(0);
+        setPrevPageId(0);
 
         this.keys = new ArrayList<>();
         this.values = new ArrayList<>();
@@ -40,6 +40,9 @@ public class LeafNode extends Page{
         setParentPageId(parentPageId);
         setNextPageId(nextPageId);
         setPrevPageId(prevPageId);
+
+        this.keys = new ArrayList<>();
+        this.values = new ArrayList<>();
 
         fillNodeEntries(buffer);
     }
@@ -214,7 +217,7 @@ public class LeafNode extends Page{
         for(int i = keyPosition + 1; i < keyCount; i++){
             short tempOffset = (short) (offset + entrySize);
 
-            int currKey = getInt(offset);
+            int currKey = getInt(tempOffset);
             tempOffset += 4;
             int currPageId = getInt(tempOffset);
             tempOffset += 4;

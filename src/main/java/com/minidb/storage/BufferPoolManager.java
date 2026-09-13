@@ -8,20 +8,25 @@ import java.util.Deque;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+record PageKey(int pageId, byte pageType) {
+}
+
 public class BufferPoolManager {
     private static BufferPoolManager instance;
     public static final int POOL_SIZE = 64;
 
     private Frame[] frames;
-    private Map<Integer, Integer> pageTable;
+    private Map<PageKey, Integer> pageTable;
     private Deque<Integer> freeFrameList;
     private LRUReplacer replacer;
+    private DiskManager disk;
 
     public BufferPoolManager(){
         this.frames = new Frame[POOL_SIZE];
         this.pageTable = new ConcurrentHashMap<>();
         this.freeFrameList = new ArrayDeque<>();
         this.replacer = new LRUReplacer();
+        this.disk = DiskManager.getInstance();
 
         for(int i = 0; i < POOL_SIZE; i++){
             this.freeFrameList.offerLast(i);
@@ -29,8 +34,8 @@ public class BufferPoolManager {
     }
 
     public Page fetchPage(int pageId, byte pageType){
-        if(this.pageTable.containsKey(pageId)){
-            int frameIndex = pageTable.get(pageId);
+        if(this.pageTable.containsKey(new PageKey(pageId, cacheType(pageType)))){
+            int frameIndex = pageTable.get(new PageKey(pageId, cacheType(pageType)));
             Frame currFrame = this.frames[frameIndex];
             currFrame.incrementPinCount();
 
@@ -41,8 +46,7 @@ public class BufferPoolManager {
         }else{
             if(!freeFrameList.isEmpty()){
                 try{
-                    DiskManager disk = new DiskManager();
-                    Page newPage = disk.readPage(pageId, pageType);
+                    Page newPage = this.disk.readPage(pageId, pageType);
 
                     int frameIndex = this.freeFrameList.pollFirst();
                     frames[frameIndex] = new Frame(newPage, 1, false);
@@ -51,7 +55,7 @@ public class BufferPoolManager {
                     this.replacer.pin(frameIndex);
 
                     //Update the page table
-                    this.pageTable.put(pageId, frameIndex);
+                    this.pageTable.put(new PageKey(pageId, cacheType(pageType)), frameIndex);
 
                     return newPage;
                 }catch(Exception e){
@@ -60,8 +64,7 @@ public class BufferPoolManager {
                 }
             }else{
                 try{
-                    DiskManager disk = new DiskManager();
-                    Page newPage = disk.readPage(pageId, pageType);
+                    Page newPage = this.disk.readPage(pageId, pageType);
 
                     int frameIndex = this.replacer.evict();
                     if(frameIndex != -1){
@@ -72,10 +75,13 @@ public class BufferPoolManager {
                             disk.writePage(evictedPageId, evictedPage);
                         }
 
+                        Page temp = this.frames[frameIndex].getPage();
+                        this.pageTable.remove(new PageKey(temp.getPageId(), cacheType(temp.getPageType())));
+
                         frames[frameIndex] = new Frame(newPage, 1, false);
 
                         //Update the page table
-                        this.pageTable.put(pageId, frameIndex);
+                        this.pageTable.put(new PageKey(pageId, cacheType(pageType)), frameIndex);
 
                         return newPage;
                     }
@@ -93,8 +99,7 @@ public class BufferPoolManager {
     }
 
     public int allocateNewPage(byte type){
-        DiskManager disk = new DiskManager();
-        int pageId = disk.allocatePage(type);
+        int pageId = this.disk.allocatePage(type);
 
         try{
             switch(type){
@@ -123,12 +128,12 @@ public class BufferPoolManager {
         return pageId;
     }
 
-    public void unpinPage(int pageId, boolean isDirty){
-        if(this.pageTable.containsKey(pageId)){
-            int frameIndex = this.pageTable.get(pageId);
+    public void unpinPage(int pageId, byte type, boolean isDirty){
+        if(this.pageTable.containsKey(new PageKey(pageId, cacheType(type)))){
+            int frameIndex = this.pageTable.get(new PageKey(pageId, cacheType(type)));
             Frame frame = frames[frameIndex];
             frame.decrementPinCount();
-            frame.setDirty(isDirty);
+            frame.setDirty(frame.isDirty() || isDirty);
 
             if(frame.getPinCount() == 0){
                 this.replacer.unpin(frameIndex);
@@ -137,15 +142,14 @@ public class BufferPoolManager {
     }
 
     public void deallocatedPage(int pageId, byte type) {
-        if(this.pageTable.containsKey(pageId)){
-            int frameIndex = this.pageTable.get(pageId);
+        if(this.pageTable.containsKey(new PageKey(pageId, cacheType(type)))){
+            int frameIndex = this.pageTable.get(new PageKey(pageId, cacheType(type)));
             Frame frame = frames[frameIndex];
             frame.decrementPinCount();
 
             if(frame.isDirty()){
                 try{
-                    DiskManager disk = new DiskManager();
-                    disk.writePage(pageId, frame.getPage());
+                    this.disk.writePage(pageId, frame.getPage());
                 }catch(Exception e){
                     e.printStackTrace();
                 }
@@ -154,7 +158,33 @@ public class BufferPoolManager {
             if(frame.getPinCount() == 0) {
                 this.replacer.unpin(frameIndex);
             }
+
+            this.disk.deallocatePage(pageId, type);
         }
+    }
+
+    public void flushAll(){
+        for(int i = 0; i < POOL_SIZE; i++){
+            Frame frame = this.frames[i];
+
+            if(frame != null && frame.isDirty()){
+                try{
+                    Page page = frame.getPage();
+                    System.out.println("Flusing PageId-"+page.getPageId());
+
+                    this.disk.writePage(page.getPageId(), page);
+                }catch (Exception e){
+                    e.printStackTrace();
+                }
+            }
+        }
+    }
+
+    private byte cacheType(byte type){
+        if(type == PageType.INDEX_INTERNAL || type == PageType.INDEX_LEAF){
+            return PageType.INDEX_LEAF;
+        }
+        return type;
     }
 
     public static synchronized BufferPoolManager getInstance(){

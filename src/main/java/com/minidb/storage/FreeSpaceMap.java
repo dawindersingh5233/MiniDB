@@ -25,6 +25,10 @@ public class FreeSpaceMap extends Page{
 
     public FreeSpaceMap(ByteBuffer buffer){
         super(buffer);
+
+        this.freeSpaceMap = new HashMap<>();
+        this.slotMap = new HashMap<>();
+
         fillFreeSpaceMap(buffer);
     }
 
@@ -78,7 +82,7 @@ public class FreeSpaceMap extends Page{
         short offset = getFreeSpacePointer();
 
         putInt(offset, pageId);
-        offset += 1;
+        offset += 4;
         putByte(offset, availableSpace);
 
         setFreeSpacePointer(offset);

@@ -11,14 +11,18 @@ public class ClusteredIndex {
     private BufferPoolManager bufferPool;
     private TableHeap tableHeap;
 
-    public ClusteredIndex(int rootPageId, Path path){
+    public ClusteredIndex(int rootPageId){
         this.rootPageId = rootPageId;
         this.bufferPool = BufferPoolManager.getInstance();
         this.tableHeap = new TableHeap();
     }
 
+    public int getRootPageId(){
+        return this.rootPageId;
+    }
+
     //GET
-    public void find(int key) {
+    public ByteBuffer find(int key) {
         LeafNode leaf = findLeaf(key);
         RecordId recordId = leaf.getRecordId(key);
 
@@ -27,8 +31,7 @@ public class ClusteredIndex {
 
         ByteBuffer data = slottedPage.getRecord(recordId.getSlotNo());
 
-        //TODO: handle how we deal with the record data
-        System.out.println(data);
+        return data;
     }
 
     public LeafNode findLeaf(int key){
@@ -36,19 +39,19 @@ public class ClusteredIndex {
 
         if(rootPage.getPageType() == PageType.INDEX_LEAF){
             return new LeafNode(rootPage.getByteBuffer());
-        }else{
-            InternalNode node = new InternalNode(rootPage.getByteBuffer());
+        }
 
-            while(true){
-                int childPageId = node.getChildPageId(key);
-                Page currPage = this.bufferPool.fetchPage(childPageId, PageType.INDEX_INTERNAL);
+        InternalNode node = new InternalNode(rootPage.getByteBuffer());
 
-                if(rootPage.getPageType() == PageType.INDEX_LEAF){
-                    return new LeafNode(rootPage.getByteBuffer());
-                }else{
-                    node = new InternalNode(currPage.getByteBuffer());
-                }
+        while(true){
+            int childPageId = node.getChildPageId(key);
+            Page currPage = this.bufferPool.fetchPage(childPageId, PageType.INDEX_INTERNAL);
+
+            if(currPage.getPageType() == PageType.INDEX_LEAF){
+                return new LeafNode(currPage.getByteBuffer());
             }
+
+            node = new InternalNode(currPage.getByteBuffer());
         }
     }
 
@@ -57,7 +60,9 @@ public class ClusteredIndex {
         LeafNode leaf = findLeaf(key);
 
         if(leaf.containsKey(key)){
+            this.bufferPool.unpinPage(leaf.getPageId(), leaf.getPageType(), false);
             update(key, record);
+            return;
         }
 
         RecordId recordId = this.tableHeap.insert(record);
@@ -68,7 +73,7 @@ public class ClusteredIndex {
         if(leaf.getKeyCount() >= order){
             splitLeaf(leaf);
         }else{
-            this.bufferPool.unpinPage(leaf.getPageId(), true);
+            this.bufferPool.unpinPage(leaf.getPageId(), leaf.getPageType(), true);
         }
     }
 
@@ -81,7 +86,7 @@ public class ClusteredIndex {
         LeafNode newLeaf = new LeafNode(newPage.getByteBuffer());
 
         for(int i = mid; i < keyCount; i++){
-            int currKey = leaf.getKeyAtPos(i);
+            int currKey = leaf.getKeyAtPos(mid);
             RecordId currRecord = leaf.getRecordId(currKey);
 
             newLeaf.addNewEntry(currKey, currRecord);
@@ -93,7 +98,7 @@ public class ClusteredIndex {
             Page page = this.bufferPool.fetchPage(newLeaf.getNextPageId(), PageType.INDEX_LEAF);
             LeafNode node = new LeafNode(page.getByteBuffer());
             node.setPrevPageId(newLeaf.getPageId());
-            this.bufferPool.unpinPage(node.getPageId(), true);
+            this.bufferPool.unpinPage(node.getPageId(), node.getPageType(), true);
         }
         leaf.setNextPageId(newLeaf.getPageId());
         newLeaf.setPrevPageId(leaf.getPageId());
@@ -118,9 +123,9 @@ public class ClusteredIndex {
             leftNode.setParentPageId(newPageId);
             rightNode.setParentPageId(newPageId);
 
-            this.bufferPool.unpinPage(left.getPageId(), true);
-            this.bufferPool.unpinPage(right.getPageId(), true);
-            this.bufferPool.unpinPage(newNode.getPageId(), true);
+            this.bufferPool.unpinPage(left.getPageId(), left.getPageType(), true);
+            this.bufferPool.unpinPage(right.getPageId(), right.getPageType(), true);
+            this.bufferPool.unpinPage(newNode.getPageId(), newNode.getPageType(), true);
 
             //TODO: check on how we can persist this rootPageId
             this.rootPageId = newPageId;
@@ -129,12 +134,12 @@ public class ClusteredIndex {
 
         Page parentPage = this.bufferPool.fetchPage(parentId, PageType.INDEX_INTERNAL);
         InternalNode parentNode = new InternalNode(parentPage.getByteBuffer());
-        parentNode.addNewEntry(key, rootPageId);
+        parentNode.addNewEntry(key, right.getPageId());
         rightNode.setParentPageId(parentNode.getPageId());
 
-        this.bufferPool.unpinPage(left.getPageId(), true);
-        this.bufferPool.unpinPage(right.getPageId(), true);
-        this.bufferPool.unpinPage(parentNode.getPageId(), true);
+        this.bufferPool.unpinPage(left.getPageId(), left.getPageType(), true);
+        this.bufferPool.unpinPage(right.getPageId(), right.getPageType(), true);
+        this.bufferPool.unpinPage(parentNode.getPageId(), parentNode.getPageType(), true);
 
         //TODO: make sure left,right,parents are flused to disk
 
@@ -153,7 +158,7 @@ public class ClusteredIndex {
         InternalNode newNode = new InternalNode(newPage.getByteBuffer());
 
         for(int i = mid; i < keyCount; i++){
-            int currKey = node.getKeyAtPos(i);
+            int currKey = node.getKeyAtPos(mid);
             int childPageId = node.getChildPageId(currKey);
 
             newNode.addNewEntry(currKey, childPageId);
@@ -162,10 +167,16 @@ public class ClusteredIndex {
 
         for(int childPageId: newNode.getChildren()){
             Page childPage = this.bufferPool.fetchPage(childPageId, PageType.INDEX_LEAF);
-            LeafNode childNode = new LeafNode(childPage.getByteBuffer());
 
-            childNode.setParentPageId(newNode.getPageId());
-            this.bufferPool.unpinPage(childPageId, true);
+            if(childPage.getPageType() == PageType.INDEX_INTERNAL){
+                InternalNode childNode = new InternalNode(childPage.getByteBuffer());
+                childNode.setParentPageId(newNode.getPageId());
+                this.bufferPool.unpinPage(childPageId, childNode.getPageType(), true);
+            } else {
+                LeafNode childNode = new LeafNode(childPage.getByteBuffer());
+                childNode.setParentPageId(newNode.getPageId());
+                this.bufferPool.unpinPage(childPageId, childNode.getPageType(), true);
+            }
         }
 
         //TODO: make sure left,right,parents are flused to disk
@@ -177,13 +188,14 @@ public class ClusteredIndex {
         LeafNode leaf = findLeaf(key);
 
         if(!leaf.containsKey(key)){
+            this.bufferPool.unpinPage(leaf.getPageId(), leaf.getPageType(), false);
             return false;
         }
 
         RecordId recordId = leaf.getRecordId(key);
         this.tableHeap.update(recordId, record);
 
-        this.bufferPool.unpinPage(leaf.getPageId(), true);
+        this.bufferPool.unpinPage(leaf.getPageId(), leaf.getPageType(), true);
 
         return true;
     }
@@ -203,12 +215,14 @@ public class ClusteredIndex {
         this.tableHeap.delete(recordId);
 
         if(leaf.getPageId() == this.rootPageId){
-            this.bufferPool.unpinPage(leaf.getPageId(), true);
+            this.bufferPool.unpinPage(leaf.getPageId(), leaf.getPageType(), true);
             return true;
         }
 
         if(leaf.getKeyCount() < minLeafKeys()){
             handleLeafUnderflow(leaf);
+        }else{
+            this.bufferPool.unpinPage(leaf.getPageId(), leaf.getPageType(), true);
         }
 
         return true;
@@ -232,16 +246,16 @@ public class ClusteredIndex {
 
             if(leftSibling.getKeyCount() > minLeafKeys()){
                 int last = leftSibling.getKeyCount() - 1;
-                int borrowedKey = leaf.getKeyAtPos(last);
-                RecordId borrowedValue = leaf.getRecordId(borrowedKey);
+                int borrowedKey = leftSibling.getKeyAtPos(last);
+                RecordId borrowedValue = leftSibling.getRecordId(borrowedKey);
 
                 leftSibling.deleteNodeEntry(borrowedKey);
                 leaf.addNewEntry(borrowedKey, borrowedValue);
                 parentNode.setKeyAtPos(idx - 1, leaf.getKeyAtPos(0));
 
-                this.bufferPool.unpinPage(leaf.getPageId(), true);
-                this.bufferPool.unpinPage(leftSibling.getPageId(), true);
-                this.bufferPool.unpinPage(parentNode.getPageId(), true);
+                this.bufferPool.unpinPage(leaf.getPageId(), leaf.getPageType(), true);
+                this.bufferPool.unpinPage(leftSibling.getPageId(), leftSibling.getPageType(), true);
+                this.bufferPool.unpinPage(parentNode.getPageId(), parentNode.getPageType(), true);
 
                 return;
             }
@@ -258,17 +272,22 @@ public class ClusteredIndex {
                 leaf.addNewEntry(borrowedKey, borrowedValue);
                 parentNode.setKeyAtPos(idx, rightSibling.getKeyAtPos(0));
 
-                this.bufferPool.unpinPage(leaf.getPageId(), true);
-                this.bufferPool.unpinPage(rightSibling.getPageId(), true);
-                this.bufferPool.unpinPage(parentNode.getPageId(), true);
+                this.bufferPool.unpinPage(leaf.getPageId(), leaf.getPageType(), true);
+                this.bufferPool.unpinPage(rightSibling.getPageId(), rightSibling.getPageType(), true);
+                this.bufferPool.unpinPage(parentNode.getPageId(), parentNode.getPageType(), true);
 
                 return;
             }
         }
 
         if(leftSibling != null){
+            if(rightPage != null){
+                this.bufferPool.unpinPage(rightPage.getPageId(), rightPage.getPageType(), false);
+            }
+            this.bufferPool.unpinPage(parentNode.getPageId(), parentNode.getPageType(), false);
             mergeLeaves(leftSibling, leaf, idx - 1);
         }else if(rightSibling != null){
+            this.bufferPool.unpinPage(parentNode.getPageId(), parentNode.getPageType(), false);
             mergeLeaves(leaf, rightSibling, idx);
         }
     }
@@ -286,10 +305,10 @@ public class ClusteredIndex {
             Page nextPage = this.bufferPool.fetchPage(right.getNextPageId(), PageType.INDEX_LEAF);
             LeafNode nextLeaf = new LeafNode(nextPage.getByteBuffer());
             nextLeaf.setPrevPageId(left.getPageId());
-            this.bufferPool.unpinPage(nextPage.getPageId(), true);
+            this.bufferPool.unpinPage(nextPage.getPageId(), nextPage.getPageType(), true);
         }
 
-        this.bufferPool.unpinPage(left.getPageId(), true);
+        this.bufferPool.unpinPage(left.getPageId(), left.getPageType(), true);
         this.bufferPool.deallocatedPage(right.getPageId(), PageType.INDEX_LEAF);
 
         Page parent = this.bufferPool.fetchPage(left.getParentPageId(), PageType.INDEX_INTERNAL);
@@ -305,20 +324,30 @@ public class ClusteredIndex {
             if(node.getChildCount() == 1){
                 int newRootId = node.getChildAtPos(0);
                 Page rootPage = this.bufferPool.fetchPage(newRootId, PageType.INDEX_LEAF);
-                LeafNode rootNode = new LeafNode(rootPage.getByteBuffer());
 
-                rootNode.setParentPageId(0);
+                if(rootPage.getPageType() == PageType.INDEX_INTERNAL){
+                    InternalNode rootNode = new InternalNode(rootPage.getByteBuffer());
+                    rootNode.setParentPageId(0);
+                    this.bufferPool.unpinPage(newRootId, rootNode.getPageType(), true);
+                } else {
+                    LeafNode rootNode = new LeafNode(rootPage.getByteBuffer());
+                    rootNode.setParentPageId(0);
+                    this.bufferPool.unpinPage(newRootId, rootNode.getPageType(), true);
+                }
+
                 this.rootPageId = newRootId;
-
-                this.bufferPool.unpinPage(newRootId, true);
+                this.bufferPool.deallocatedPage(node.getPageId(), PageType.INDEX_INTERNAL);  // add this
+                return;
             }
 
-            this.bufferPool.unpinPage(node.getPageId(), true);
+            this.bufferPool.unpinPage(node.getPageId(), node.getPageType(), true);
             return;
         }
 
         if(node.getChildCount() < minInternalChildren()){
             handleInternalUnderflow(node);
+        } else {
+            this.bufferPool.unpinPage(node.getPageId(), node.getPageType(), true);
         }
     }
 
@@ -357,10 +386,10 @@ public class ClusteredIndex {
 
                 parentNode.setKeyAtPos(idx - 1, movedKey);
 
-                this.bufferPool.unpinPage(tempPage.getPageId(), true);
-                this.bufferPool.unpinPage(node.getPageId(), true);
-                this.bufferPool.unpinPage(leftPage.getPageId(), true);
-                this.bufferPool.unpinPage(parentNode.getPageId(), true);
+                this.bufferPool.unpinPage(tempPage.getPageId(), tempPage.getPageType(), true);
+                this.bufferPool.unpinPage(node.getPageId(), node.getPageType(), true);
+                this.bufferPool.unpinPage(leftPage.getPageId(), leftPage.getPageType(), true);
+                this.bufferPool.unpinPage(parentNode.getPageId(), parentNode.getPageType(), true);
 
                 return;
             }
@@ -388,18 +417,24 @@ public class ClusteredIndex {
 
                 parentNode.setKeyAtPos(idx, movedKey);
 
-                this.bufferPool.unpinPage(tempPage.getPageId(), true);
-                this.bufferPool.unpinPage(node.getPageId(), true);
-                this.bufferPool.unpinPage(rightPage.getPageId(), true);
-                this.bufferPool.unpinPage(parentNode.getPageId(), true);
+                this.bufferPool.unpinPage(tempPage.getPageId(), tempPage.getPageType(), true);
+                this.bufferPool.unpinPage(node.getPageId(), node.getPageType(), true);
+                this.bufferPool.unpinPage(rightPage.getPageId(), rightPage.getPageType(), true);
+                this.bufferPool.unpinPage(parentNode.getPageId(), parentNode.getPageType(), true);
 
                 return;
             }
         }
 
         if(leftSibling != null){
+            if(rightPage != null){
+                this.bufferPool.unpinPage(rightPage.getPageId(), rightPage.getPageType(), false);
+            }
+
+            this.bufferPool.unpinPage(parentNode.getPageId(), parentNode.getPageType(), false);
             mergeInternal(leftSibling, node, idx - 1);
         }else if(rightSibling != null){
+            this.bufferPool.unpinPage(parentNode.getPageId(), parentNode.getPageType(), false);
             mergeInternal(node, rightSibling, idx);
         }
     }
@@ -430,7 +465,7 @@ public class ClusteredIndex {
                 tempNode.setParentPageId(left.getPageId());
             }
 
-            this.bufferPool.unpinPage(tempPage.getPageId(), true);
+            this.bufferPool.unpinPage(tempPage.getPageId(), tempPage.getPageType(), true);
         }
 
 
@@ -438,9 +473,9 @@ public class ClusteredIndex {
         int deletionKey = parentNode.getKeyAtPos(sepIdx);
         parentNode.deleteNodeEntry(deletionKey);
 
-        this.bufferPool.unpinPage(left.getPageId(), true);
+        this.bufferPool.unpinPage(left.getPageId(), left.getPageType(), true);
         this.bufferPool.deallocatedPage(right.getPageId(), PageType.INDEX_INTERNAL);
-        this.bufferPool.unpinPage(parentNode.getPageId(), true);
+        this.bufferPool.unpinPage(parentNode.getPageId(), parentNode.getPageType(), true);
 
         handleInternalUnderflowIfNeeded(parentNode);
     }

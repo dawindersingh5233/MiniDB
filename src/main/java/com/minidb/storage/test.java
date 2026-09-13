@@ -1,227 +1,109 @@
 package com.minidb.storage;
 
+import com.minidb.schema.*;
+
 import java.nio.ByteBuffer;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Random;
 
 public class test {
     public static void main(String args[]){
-        String dest = "/home/dawinder/Documents/Projects/MiniDB/data/main.db";
-        Path path = Path.of(dest);
+        ClusteredIndex index = new ClusteredIndex(1);
+        LeafNode leaf = index.findLeaf(900);
+        System.out.println("Key count: "+leaf.getKeyCount());
+        System.out.println("PageId: "+leaf.getPageId());
+        System.out.println("Parent PageId: "+leaf.getParentPageId());
+    }
 
-        System.out.println("### Program Execution Started ###");
+    public static void init(){
+        LeafNode root = new LeafNode();
+        root.setPageId(1);
+
+        DiskManager disk = DiskManager.getInstance();
+
+        try{
+            disk.writePage(1, root);
+        }catch(Exception e){
+            e.printStackTrace();
+        }
+    }
+
+    public static int testInsert(){
+        ClusteredIndex clusteredIndex = new ClusteredIndex(1);
+
+        for(int i = 1; i < 1000; i++){
+            ByteBuffer row = getData(i);
+            clusteredIndex.insert(i, row);
+        }
+
+        int rootId = clusteredIndex.getRootPageId();
+
+        System.out.println("New root id is: "+rootId);
+        System.out.println("Done !");
+
+        return rootId;
+    }
+
+    public static void testRead(int rootId, int key){
+        ClusteredIndex clusteredIndex = new ClusteredIndex(rootId);
+
+        ByteBuffer data = clusteredIndex.find(key);
+        printData(data);
+    }
+
+    public static int testDelete(int rootId){
+        ClusteredIndex clusteredIndex = new ClusteredIndex(rootId);
+
+        for(int i = 200; i < 850; i++){
+            clusteredIndex.delete(i);
+        }
+
+        int newRootId = clusteredIndex.getRootPageId();
+        System.out.println("New Root Id after deletion: "+newRootId);
+        System.out.println("Done !");
+
+        return newRootId;
+    }
+
+    public static ByteBuffer getData(int key){
+        Schema schema = getSchema();
+        Random rand = new Random();
+
+        List<Value> value = new ArrayList<>();
+        value.add(Value.valueOf(key));
+        value.add(Value.valueOf("Dawinder - "+key));
+        value.add(Value.valueOf(rand.nextInt(100)));
+
+        Tuple tuple = new Tuple(value, schema);
+
+        return ByteBuffer.wrap(tuple.getData());
+    }
+
+    public static void flushAll(){
+        BufferPoolManager buffer = BufferPoolManager.getInstance();
+        buffer.flushAll();
+    }
+
+    public static void printData(ByteBuffer data){
+        Schema schema = getSchema();
+        Tuple tuple = new Tuple(data.array(), schema);
+
+        for(int i = 0; i < schema.getColumnCount(); i++){
+            System.out.print(tuple.getValue(i)+ " ");
+        }
         System.out.println();
-
-        DiskManager dm = new DiskManager(path);
-        testSlottedRead(dm);
-
-        System.out.println("### Program Execution Completed ###");
     }
 
-    public static void testSlottedInsert(DiskManager dm){
-        try{
-            ByteBuffer record1 = ByteBuffer.allocate(100);
-            record1.putInt(1);
-            record1.putInt(15233);
-            record1.flip();
+    public static Schema getSchema(){
+        List<Column> columns = new ArrayList<>();
+        columns.add(new Column("id", TypeId.INTEGER));
+        columns.add(new Column("name", TypeId.VARCHAR));
+        columns.add(new Column("marks", TypeId.INTEGER));
 
-            ByteBuffer record2 = ByteBuffer.allocate(100);
-            record2.putInt(5);
-            record2.putInt(55233);
-            record2.flip();
+        Schema schema = new Schema(columns, "id");
 
-            ByteBuffer record3 = ByteBuffer.allocate(100);
-            record3.putInt(3);
-            record3.putInt(35233);
-            record3.flip();
-
-            ByteBuffer record4 = ByteBuffer.allocate(100);
-            record4.putInt(2);
-            record4.putInt(25233);
-            record4.flip();
-
-            ByteBuffer record5 = ByteBuffer.allocate(100);
-            record5.putInt(4);
-            record5.putInt(45233);
-            record5.flip();
-
-            SlottedPage page = dm.readPage(1);
-            short slot1 = page.insertRecord(record1);
-            short slot2 = page.insertRecord(record2);
-            short slot3 = page.insertRecord(record3);
-            short slot4 = page.insertRecord(record4);
-            short slot5 = page.insertRecord(record5);
-
-            dm.writePage(1, page);
-
-            System.out.println(page);
-
-            SlottedPage page2 = dm.readPage(1);
-
-            for(Slot slot: page2.getSlots()){
-                System.out.println("Slot ["+slot.getOffset()+", "+slot.getLength()+"]");
-            }
-
-        }catch(Exception e){
-            e.printStackTrace();
-            System.out.println("Exception in main(): "+ e.getMessage());
-        }
-    }
-
-    public static void testSlottedRead(DiskManager dm){
-        try{
-            SlottedPage page = dm.readPage(1);
-
-            for(int i = 0; i < page.getSlotCount(); i++){
-                ByteBuffer record = page.getRecord((short) i);
-                System.out.println("Record ["+record.getInt()+", "+record.getInt()+"]");
-            }
-        }catch(Exception e){
-            e.printStackTrace();
-            System.out.println("Exception in main(): "+ e.getMessage());
-        }
-    }
-
-    public static void testSlottedUpdate(DiskManager dm){
-        try{
-            SlottedPage page = dm.readPage(1);
-
-            ByteBuffer record2 = ByteBuffer.allocate(100);
-            record2.putInt(5);
-            record2.putInt(5233);
-            record2.flip();
-
-            page.updateRecord((short) 4, record2);
-
-            dm.writePage(1, page);
-
-            System.out.println("Record updated successfully");
-        }catch(Exception e){
-            e.printStackTrace();
-            System.out.println("Exception in main(): "+ e.getMessage());
-        }
-    }
-
-    public static void testSlottedDelete(DiskManager dm){
-        try{
-            SlottedPage page = dm.readPage(1);
-
-            page.deleteRecord((short) 2);
-            System.out.println("Record-3 Deleted");
-
-            page.compact();
-
-            dm.writePage(1, page);
-            System.out.println("Page compated successfully");
-        }catch(Exception e){
-            e.printStackTrace();
-            System.out.println("Exception in main(): "+ e.getMessage());
-        }
-    }
-
-    public static void testPageInsert(DiskManager diskManager){
-        System.out.println("### Testing insertPage() Start ###");
-        SlottedPage page1 = new SlottedPage();
-        page1.setPageId(1);
-        page1.setPageType(PageType.INDEX_LEAF);
-        page1.setCheckSum(5233);
-        page1.setFreeSpacePointer((short) 4096);
-        page1.setSlotCount((short) 0);
-
-        try{
-            System.out.println("# Writing Page - "+page1.getPageId());
-            diskManager.writePage(page1.getPageId(), page1);
-
-        }catch(Exception e){
-            System.out.println("Exception in main(): "+ e.getMessage());
-        }
-
-        System.out.println("### Testing insertPage() End ###");
-    }
-
-    public static void testPageRead(DiskManager diskManager){
-        try{
-            System.out.println();
-            System.out.println("### Testing readPage() Start ###");
-
-            SlottedPage page1 = diskManager.readPage(1);
-            System.out.println(page1);
-
-            System.out.println("### Testing readPage() End ###");
-        }catch(Exception e){
-            System.out.println("Exception in main(): "+ e.getMessage());
-        }
-    }
-
-    public static void testPageReallocate(DiskManager diskManager){
-        System.out.println("### Testing allocatePage() Start ###");
-        diskManager.deallocatePage(2);
-
-        SlottedPage newPage = new SlottedPage();
-        newPage.setPageId(diskManager.allocatePage());
-        newPage.setPageType(PageType.INDEX_LEAF);
-        newPage.setCheckSum(9676);
-        newPage.setSlotCount((short) 0);
-        newPage.setFreeSpacePointer((short) 4096);
-
-        try{
-            diskManager.writePage(newPage.getPageId(), newPage);
-        }catch(Exception e){
-            System.out.println("Exception in main(): "+ e.getMessage());
-        }
-        System.out.println("### Testing allocatePage() End ###");
-    }
-
-    public static void testBufferPool(BufferPoolManager bm){
-        try {
-            System.out.println("### Reading Page 1 ###");
-            SlottedPage page1 = bm.fetchPage(1);
-            System.out.println(page1);
-
-            System.out.println("### Reading Page 2 ###");
-            SlottedPage page2 = bm.fetchPage(2);
-            System.out.println(page2);
-
-            System.out.println("### Reading Page 3 ###");
-            SlottedPage page3 = bm.fetchPage(3);
-            System.out.println(page3);
-
-            System.out.println("### Reading Page 1 ###");
-            page1 = bm.fetchPage(1);
-            System.out.println(page1);
-
-            System.out.println("### Reading Page 3 ###");
-            page3 = bm.fetchPage(3);
-            System.out.println(page3);
-
-            System.out.println("### Reading Page 4 ###");
-            SlottedPage page4 = bm.fetchPage(4);
-            if(page4 == null) {
-                System.out.println(" !!! Buffer is full & Eviction Not Possible !!!");
-            }else{
-                System.out.println(page4);
-            }
-
-            System.out.println("### Page 2 Execution completed ###");
-            bm.unpinPage(2, false);
-
-            System.out.println("### Re-reading Page 2 ###");
-            page2 = bm.fetchPage(2);
-            System.out.println(page2);
-
-            System.out.println("### Reading Page 4 ###");
-            page4 = bm.fetchPage(4);
-            if(page4 == null) {
-                System.out.println(" !!! Buffer is full & Eviction Not Possible !!!");
-            }else{
-                System.out.println(page4);
-            }
-
-            //Page with this id is not present
-            System.out.println("### Reading Page 10 ###");
-            SlottedPage page10 = bm.fetchPage(10);
-            System.out.println(page10);
-        }catch(Exception e){
-            System.out.println("Exception in main(): "+ e.getMessage());
-        }
+        return schema;
     }
 }

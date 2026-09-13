@@ -2,6 +2,7 @@ package com.minidb.storage;
 
 import java.nio.ByteBuffer;
 import java.util.List;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class SlottedPage extends Page{
     public static int pageHeaderSize = 17;
@@ -65,6 +66,7 @@ public class SlottedPage extends Page{
                     this.slotDir.addSlotAtPos(pos, offset, dataLength);
                     slotId = (short) pos;
                 }else{
+                    slotId = (short) getSlotCount();
                     this.slotDir.addSlot(offset, dataLength);
                 }
 
@@ -173,6 +175,7 @@ public class SlottedPage extends Page{
     }
 
     //Get data record linked with specific slot
+    /*
     public ByteBuffer getRecord(short slotId){
         Slot slot = this.slotDir.get(slotId);
 
@@ -183,6 +186,20 @@ public class SlottedPage extends Page{
         ByteBuffer record = view.slice();
 
         return record;
+    }
+     */
+
+   public ByteBuffer getRecord(short slotId){
+        Slot slot = this.slotDir.get(slotId);
+
+        ByteBuffer view = getByteBuffer();
+        view.position(slot.getOffset());
+        view.limit(slot.getOffset() + slot.getLength());
+
+        byte[] recordBytes = new byte[slot.getLength()];
+        view.get(recordBytes);
+
+        return ByteBuffer.wrap(recordBytes);
     }
 
     // sets the given slotId length to -1
@@ -270,10 +287,8 @@ public class SlottedPage extends Page{
     }
 
     public void loadSlotDirectory(ByteBuffer data){
-        short slotCount = data.getShort(9);
+        short slotCount = getSlotCount();
         int offset = pageHeaderSize;
-
-        System.out.println(slotCount);
 
         for(int i = 0; i < slotCount; i++){
             short slotOffset = data.getShort(offset);

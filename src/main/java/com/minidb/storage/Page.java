@@ -33,6 +33,7 @@ public class Page {
     }
 
     public Page(ByteBuffer buffer){
+        this.rwl = new ReentrantReadWriteLock();
         this.setByteBuffer(buffer);
     }
 

@@ -32,6 +32,9 @@ public class InternalNode extends Page{
         int parentPageId = buffer.getInt(PARENT_PAGE_ID_OFFSET);
         setParentPageId(parentPageId);
 
+        this.keys = new ArrayList<>();
+        this.values = new ArrayList<>();
+
         fillNodeEntries(buffer);
     }
 
@@ -108,7 +111,7 @@ public class InternalNode extends Page{
             return;
         }
 
-        values.add(leftPageId);
+        values.add(0, leftPageId);
         putInt(NODE_ENTRY_OFFSET, leftPageId);
         setFreeSpacePointer((short) (NODE_ENTRY_OFFSET + 4));
 
@@ -124,7 +127,7 @@ public class InternalNode extends Page{
         int insertPosition = -(keyPosition + 1);
 
         this.keys.add(insertPosition, key);
-        this.values.add(insertPosition, pageId);
+        this.values.add(insertPosition + 1, pageId);
 
         short entrySize = 8;
         short offset = (short) (NODE_ENTRY_OFFSET + 4 + (entrySize * insertPosition));
@@ -142,7 +145,7 @@ public class InternalNode extends Page{
             int currValue = getInt((short) (offset + 4));
 
             //put previous node entry in current position
-            putInt(offset, tempValue);
+            putInt(offset, tempKey);
             offset += 4;
             putInt(offset, tempValue);
             offset += 4;
@@ -216,13 +219,13 @@ public class InternalNode extends Page{
 
     public int getChildPageId(int key){
         int pos = Collections.binarySearch(this.keys, key);
-        pos = -(pos + 1);
 
-        if(key < this.keys.get(pos)){
-            return this.values.get(pos);
-        }else{
+        if(pos >= 0){
             return this.values.get(pos + 1);
         }
+
+        int insertPos = -(pos + 1);
+        return this.values.get(insertPos);
     }
 
     public void deleteNodeEntry(int key){
@@ -231,9 +234,6 @@ public class InternalNode extends Page{
         }
 
         int keyPosition = Collections.binarySearch(this.keys, key);
-        keyPosition = -(keyPosition + 1);
-
-        //TODO: how do we handle the case of deleting first pointer
         this.keys.remove(keyPosition);
         this.values.remove(keyPosition + 1);
 

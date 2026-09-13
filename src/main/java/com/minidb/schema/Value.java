@@ -52,4 +52,20 @@ public class Value {
                 throw new UnsupportedOperationException();
         }
     }
+
+    public String toString(){
+        switch (type){
+            case INTEGER:
+                return asInt()+"";
+
+            case VARCHAR:
+                return asString();
+
+            case BOOLEAN:
+                return asBoolean()+"";
+
+        }
+
+        return "";
+    }
 }

@@ -26,7 +26,7 @@ public class TableHeap {
                short slotNo = slottedPage.insertRecord(record);
 
                if(slotNo >= 0){
-                    this.bufferPool.unpinPage(pageId, true);
+                    this.bufferPool.unpinPage(pageId, PageType.DATA, true);
 
                     int pageSize = slottedPage.getFreeSpacePointer();
                     int headerSize = SlottedPage.pageHeaderSize + (slottedPage.getSlotCount() * 4);
@@ -35,6 +35,8 @@ public class TableHeap {
                     this.fsm.updateFreeSpace(pageId, toPercentage(availableSpace));
 
                     return new RecordId(pageId, slotNo);
+               }else{
+                   this.bufferPool.unpinPage(pageId, PageType.DATA, true);
                }
             }
         }else{
@@ -51,15 +53,15 @@ public class TableHeap {
                 short slotNo = slottedPage.insertRecord(record);
 
                 if(slotNo >= 0){
-                    this.bufferPool.unpinPage(pageId, true);
+                    this.bufferPool.unpinPage(slottedPage.getPageId(), slottedPage.getPageType(), true);
 
                     int pageSize = slottedPage.getFreeSpacePointer();
                     int headerSize = SlottedPage.pageHeaderSize + (slottedPage.getSlotCount() * 4);
                     int availableSpace = pageSize - headerSize;
 
-                    this.fsm.updateFreeSpace(pageId, toPercentage(availableSpace));
+                    this.fsm.updateFreeSpace(newPageId, toPercentage(availableSpace));
 
-                    return new RecordId(pageId, slotNo);
+                    return new RecordId(newPageId, slotNo);
                 }
             }
         }
@@ -73,7 +75,7 @@ public class TableHeap {
 
         slottedPage.updateRecord(recordId.getSlotNo(), record);
 
-        this.bufferPool.unpinPage(recordId.getPageId(), true);
+        this.bufferPool.unpinPage(recordId.getPageId(), PageType.DATA, true);
     }
 
     public void delete(RecordId recordId){
@@ -84,7 +86,7 @@ public class TableHeap {
         SlottedPage slottedPage = new SlottedPage(page.getByteBuffer());
         slottedPage.deleteRecord(slotNo);
 
-        this.bufferPool.unpinPage(pageId, true);
+        this.bufferPool.unpinPage(pageId, PageType.DATA, true);
     }
 
     public byte toPercentage(int availableSpace){
